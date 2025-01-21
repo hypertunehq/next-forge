@@ -1,0 +1,183 @@
+---
+title: Switch to Hypertune
+description: How to change the default feature flag provider to Hypertune.
+---
+
+[Hypertune](https://www.hypertune.com/) is the most flexible platform for feature flags, A/B testing, analytics and app configuration. Built with full end-to-end type-safety, Git-style version control and local, synchronous, in-memory flag evaluation. Optimized for TypeScript, React and Next.js. Here's how to switch the default feature flag provider to Hypertune.
+
+## 1. Create a new Hypertune project
+Go to Hypertune and create a new project using the Next forge template. Then go the settings page of the project and copy the main token.
+
+## 2. Update the environment variables
+
+Next, update the environment variables across the project, for example:
+
+```js apps/app/.env
+// Add this:
+NEXT_PUBLIC_HYPERTUNE_TOKEN=""
+```
+
+Add a `.env` file to the Feature flags package with the following contents.
+
+```js packages/feature-flags/.env
+NEXT_PUBLIC_HYPERTUNE_TOKEN=""
+HYPERTUNE_FRAMEWORK=nextApp
+HYPERTUNE_OUTPUT_DIRECTORY_PATH=generated
+HYPERTUNE_PLATFORM=vercel
+HYPERTUNE_GET_HYPERTUNE_IMPORT_PATH=../lib/getHypertune
+```
+
+## 3. Amend keys file for the feature flags package
+
+Add `NEXT_PUBLIC_HYPERTUNE_TOKEN` environment variable to the `createEnv` call for the client.
+
+<CodeGroup>
+
+```ts packages/feature-flags/keys.ts {6-8,14}
+import { createEnv } from '@t3-oss/env-nextjs';
+import { z } from 'zod';
+
+export const keys = () =>
+  createEnv({
+    client: {
+      NEXT_PUBLIC_HYPERTUNE_TOKEN: z.string().min(1),
+    },
+    server: {
+      FLAGS_SECRET: z.string().min(1).optional(),
+    },
+    runtimeEnv: {
+      FLAGS_SECRET: process.env.FLAGS_SECRET,
+      NEXT_PUBLIC_HYPERTUNE_TOKEN: process.env.NEXT_PUBLIC_HYPERTUNE_TOKEN,
+    },
+  });
+```
+
+</CodeGroup>
+
+## 4. Swap out the required dependencies
+
+First, uninstall the existing dependencies from the Feature flags package...
+
+```sh Terminal
+pnpm remove @repo/analytics --filter @repo/feature-flags
+```
+
+... and install the new dependencies...
+
+```sh Terminal
+pnpm add hypertune server-only --filter @repo/feature-flags
+```
+
+## 5. Create getHypertune file and delete createFlag file
+
+Create `getHypertune.ts` file in the Feature flag package. This file defines a `getHypertune` that returns an initialized instace of the Hypertune SDK on the server.
+
+<CodeGroup>
+
+```ts packages/feature-flags/lib/getHypertune.ts
+import 'server-only';
+import { createSource } from '@/generated/hypertune';
+import { getVercelOverride } from '@/generated/hypertune.vercel';
+import { auth } from '@repo/auth/server';
+import { unstable_noStore as noStore } from 'next/cache';
+import type { ReadonlyHeaders } from 'next/dist/server/web/spec-extension/adapters/headers';
+import type { ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies';
+import { keys } from '../keys';
+
+const hypertuneSource = createSource({
+  token: keys().NEXT_PUBLIC_HYPERTUNE_TOKEN,
+});
+
+export default async function getHypertune(params?: {
+  headers?: ReadonlyHeaders;
+  cookies?: ReadonlyRequestCookies;
+}) {
+  noStore();
+  await hypertuneSource.initIfNeeded(); // Check for flag updates
+
+  const { userId, orgId, sessionId } = await auth();
+
+  // Respect flag overrides set by the Vercel Toolbar
+  hypertuneSource.setOverride(await getVercelOverride());
+
+  return hypertuneSource.root({
+    args: {
+      context: {
+        environment: process.env.NODE_ENV,
+        user: { id: userId ?? '', sessionId: sessionId ?? '' },
+        org: { id: orgId ?? '' },
+      },
+    },
+  });
+}
+```
+
+</CodeGroup>
+
+Delete the `createEnv.ts` file as this is now no longer necessary.
+
+
+## 6. Setup code generation command and run it
+
+Add `codegen` script to the `package.json` file for the Feature flags package that calls `npx hypertune`. 
+
+```json packages/feature-flags/package.json
+{
+  "scripts": {
+    "codegen": "npx hypertune"
+  }
+}
+```
+
+Then add `codegen` task with the following config to the `turbo.json` file.
+
+```json turbo.json
+{
+  "tasks": {
+    "codegen": {
+      "cache": false
+    }
+  }
+}
+```
+
+Finally add `codegen` task to the top level `package.json` file that calls `turbo codegen`
+
+```json package.json
+{
+  "scripts": {
+    "codegen": "turbo codegen"
+  }
+}
+```
+
+and run the code generation.
+
+```sh Terminal
+pnpm codegen
+```
+
+This will generate the following files, that contain all the code for your feature flags.
+
+```txt
+packages/feature-flags/generated/hypertune.ts
+packages/feature-flags/generated/hypertune.react.tsx
+packages/feature-flags/generated/hypertune.vercel.tsx
+```
+
+## 7. Update index.ts
+
+Hypertune automatically generates flag instances using the `@vercel/flags` package. To export them the same way as before update the `index.ts` file to export everything from the `generated/hypertune.vercel.ts` file.
+
+<CodeGroup>
+
+```ts packages/feature-flags/index.ts
+export { * } from "./generated/hypertune.vercel.tsx"
+```
+</CodeGroup>
+
+That's it you are now using Hypertune to manage feature flags in your project.
+
+## 8. Create more flags
+
+To add more flags simply create them in the Hypertune UI and re-run the code generation step. They will be automatically added to the generated file. No more issues due to misspelled flag names!
