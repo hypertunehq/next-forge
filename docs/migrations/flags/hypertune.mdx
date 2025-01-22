@@ -172,9 +172,11 @@ Hypertune automatically generates flag instances using the `@vercel/flags` packa
 <CodeGroup>
 
 ```ts packages/feature-flags/index.ts
-export { * } from "./generated/hypertune.vercel.tsx"
+export * from "./generated/hypertune.vercel.tsx"
 ```
 </CodeGroup>
+
+Hypertune adds `Flag` suffix to all feature flags, so you will need to update all flag usages to use this new name (e.g. `showBetaFeature` => `showBetaFeatureFlag`). 
 
 That's it you are now using Hypertune to manage feature flags in your project.
 
