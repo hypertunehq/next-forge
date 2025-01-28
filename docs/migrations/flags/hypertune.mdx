@@ -1,23 +1,24 @@
 ---
 title: Switch to Hypertune
-description: How to change the default feature flag provider to Hypertune.
+description: How to change the feature flag provider to Hypertune.
 ---
 
-[Hypertune](https://www.hypertune.com/) is the most flexible platform for feature flags, A/B testing, analytics and app configuration. Built with full end-to-end type-safety, Git-style version control and local, synchronous, in-memory flag evaluation. Optimized for TypeScript, React and Next.js. Here's how to switch the default feature flag provider to Hypertune.
+[Hypertune](https://www.hypertune.com/) is the most flexible platform for feature flags, A/B testing, analytics and app configuration. Built with full end-to-end type-safety, Git version control and local, synchronous, in-memory flag evaluation. Optimized for TypeScript, React and Next.js.
 
 ## 1. Create a new Hypertune project
-Go to Hypertune and create a new project using the [Next forge template](https://app.hypertune.com/?new_project=1&new_project_template=next-forge). Then go the settings page of the project and copy the main token.
+
+Go to Hypertune and create a new project using the [next-forge template](https://app.hypertune.com/?new_project=1&new_project_template=next-forge). Then go to the Settings page of your project and copy the main token.
 
 ## 2. Update the environment variables
 
-Next, update the environment variables across the project, for example:
+Update the environment variables across the project. For example:
 
 ```js apps/app/.env
 // Add this:
 NEXT_PUBLIC_HYPERTUNE_TOKEN=""
 ```
 
-Add a `.env` file to the Feature flags package with the following contents.
+Add a `.env` file to the `feature-flags` package with the following contents:
 
 ```js packages/feature-flags/.env
 NEXT_PUBLIC_HYPERTUNE_TOKEN=""
@@ -27,9 +28,9 @@ HYPERTUNE_PLATFORM=vercel
 HYPERTUNE_GET_HYPERTUNE_IMPORT_PATH=../lib/getHypertune
 ```
 
-## 3. Amend keys file for the feature flags package
+## 3. Update the `keys.ts` file in the `feature-flags` package
 
-Add `NEXT_PUBLIC_HYPERTUNE_TOKEN` environment variable to the `createEnv` call for the client.
+Use the `NEXT_PUBLIC_HYPERTUNE_TOKEN` environment variable in the call to `createEnv`:
 
 <CodeGroup>
 
@@ -56,21 +57,50 @@ export const keys = () =>
 
 ## 4. Swap out the required dependencies
 
-First, uninstall the existing dependencies from the Feature flags package...
+First, delete the `create-flag.ts` file.
+
+Then, uninstall the existing dependencies from the `feature-flags` package:
 
 ```sh Terminal
 pnpm remove @repo/analytics --filter @repo/feature-flags
 ```
 
-... and install the new dependencies...
+Then, install the new dependencies:
 
 ```sh Terminal
 pnpm add hypertune server-only --filter @repo/feature-flags
 ```
 
-## 5. Create getHypertune file and delete createFlag file
+## 5. Set up Hypertune code generation
 
-Create `getHypertune.ts` file in the Feature flag package. This file defines a `getHypertune` that returns an initialized instace of the Hypertune SDK on the server.
+Add `analyze` and `build` scripts to the `package.json` file for the `feature-flags` package, which both execute the `hypertune` command:
+
+```json packages/feature-flags/package.json
+{
+  "scripts": {
+    "analyze": "hypertune",
+    "build": "hypertune"
+  }
+}
+```
+
+Then run code generation with the following command:
+
+```sh Terminal
+pnpm build --filter @repo/feature-flags 
+```
+
+This will generate the following files:
+
+```txt
+packages/feature-flags/generated/hypertune.ts
+packages/feature-flags/generated/hypertune.react.tsx
+packages/feature-flags/generated/hypertune.vercel.tsx
+```
+
+## 6. Set up Hypertune client instance
+
+Add a `getHypertune.ts` file in the `feature-flags` package which defines a `getHypertune` function that returns an initialized instance of the Hypertune SDK on the server:
 
 <CodeGroup>
 
@@ -114,39 +144,9 @@ export default async function getHypertune(params?: {
 
 </CodeGroup>
 
-Delete the `createEnv.ts` file as this is now no longer necessary.
+## 7. Update `index.ts`
 
-
-## 6. Setup code generation command and run it
-
-Add `analyze` and `build` scripts to the `package.json` file for the Feature flags package which call `hypertune`. 
-
-```json packages/feature-flags/package.json
-{
-  "scripts": {
-    "analyze": "hypertune",
-    "build": "hypertune"
-  }
-}
-```
-
-Then run the code generation using the following command.
-
-```sh Terminal
-pnpm build --filter @repo/feature-flags 
-```
-
-This will generate the following files, that contain all the code for your feature flags.
-
-```txt
-packages/feature-flags/generated/hypertune.ts
-packages/feature-flags/generated/hypertune.react.tsx
-packages/feature-flags/generated/hypertune.vercel.tsx
-```
-
-## 7. Update index.ts
-
-Hypertune automatically generates flag instances using the `@vercel/flags` package. To export them the same way as before update the `index.ts` file to export everything from the `generated/hypertune.vercel.ts` file.
+Hypertune automatically generates feature flag functions that use the `@vercel/flags` package. To export them the same way as before, update the `index.ts` file to export everything from the `generated/hypertune.vercel.ts` file:
 
 <CodeGroup>
 
@@ -155,10 +155,8 @@ export * from "./generated/hypertune.vercel.tsx"
 ```
 </CodeGroup>
 
-Hypertune adds `Flag` suffix to all feature flags, so you will need to update all flag usages to use this new name (e.g. `showBetaFeature` => `showBetaFeatureFlag`). 
+Hypertune adds a `Flag` suffix to all these generated feature flag functions, so you will need to update flag usages with this, e.g. `showBetaFeature` => `showBetaFeatureFlag`.
 
-That's it you are now using Hypertune to manage feature flags in your project.
+## 8. Add more feature flags
 
-## 8. Create more flags
-
-To add more flags simply create them in the Hypertune UI and re-run the code generation step. They will be automatically added to the generated file. No more issues due to misspelled flag names!
+To add more feature flags, create them in the Hypertune UI and then re-run code generation. They will be automatically added to your generated files.
