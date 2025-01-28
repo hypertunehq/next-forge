@@ -76,12 +76,12 @@ Create `getHypertune.ts` file in the Feature flag package. This file defines a `
 
 ```ts packages/feature-flags/lib/getHypertune.ts
 import 'server-only';
-import { createSource } from '@/generated/hypertune';
-import { getVercelOverride } from '@/generated/hypertune.vercel';
 import { auth } from '@repo/auth/server';
 import { unstable_noStore as noStore } from 'next/cache';
 import type { ReadonlyHeaders } from 'next/dist/server/web/spec-extension/adapters/headers';
 import type { ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies';
+import { createSource } from '../generated/hypertune';
+import { getVercelOverride } from '../generated/hypertune.vercel';
 import { keys } from '../keys';
 
 const hypertuneSource = createSource({
@@ -119,42 +119,21 @@ Delete the `createEnv.ts` file as this is now no longer necessary.
 
 ## 6. Setup code generation command and run it
 
-Add `codegen` script to the `package.json` file for the Feature flags package that calls `npx hypertune`. 
+Add `analyze` and `build` scripts to the `package.json` file for the Feature flags package which call `hypertune`. 
 
 ```json packages/feature-flags/package.json
 {
   "scripts": {
-    "codegen": "npx hypertune"
+    "analyze": "hypertune",
+    "build": "hypertune"
   }
 }
 ```
 
-Then add `codegen` task with the following config to the `turbo.json` file.
-
-```json turbo.json
-{
-  "tasks": {
-    "codegen": {
-      "cache": false
-    }
-  }
-}
-```
-
-Finally add `codegen` task to the top level `package.json` file that calls `turbo codegen`
-
-```json package.json
-{
-  "scripts": {
-    "codegen": "turbo codegen"
-  }
-}
-```
-
-and run the code generation.
+Then run the code generation using the following command.
 
 ```sh Terminal
-pnpm codegen
+pnpm build --filter @repo/feature-flags 
 ```
 
 This will generate the following files, that contain all the code for your feature flags.
